@@ -1,0 +1,160 @@
+---
+title: "IE 7275 Project"
+author: "Chenghan Yue"
+date: "4/17/2021"
+output: word_document
+---
+
+
+```{r}
+library(dummies)
+library(dplyr)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(forecast)
+library(ggplot2)
+library(InformationValue)
+library(ISLR)
+library("Hmisc")
+library(corrplot)
+library(psych)
+library(reshape2)
+library(grid)
+library(gridExtra)
+library(randomForest)
+library(pROC)
+library(e1071)
+library(ROCR)
+library(FNN)
+```
+
+```{r}
+heart = read.csv("C:/IE 7275/Project/heart.csv", header = T)
+
+## Create dummy variables for the categorical predictors (Sex and chest pain type)
+heart.dummy = dummy.data.frame(heart, sep = ".", dummy.classes = "factor")
+heart.dummy = heart.dummy[,-c(1,2)]
+
+
+
+```
+
+
+```{r}
+## Visualized data
+### heart attack output vs. age
+ggplot(heart) + geom_histogram(aes(x = age), binwidth = 0.5)
+### heart attack output vs. chest pain
+ggplot(heart) + geom_histogram(aes(x = cp), binwidth = 0.5)
+
+## Data correlation Plot
+heart.cor = cor(heart)
+heart.cor = cor(heart, method = c("spearman"))
+corrplot(heart.cor)
+
+## Parallel Analysis Scree Plots\
+fa.parallel(heart, n.iter = 100,show.legend = F, main = "Scree plot with parallel analysis")
+
+## PCA
+pca_heart = prcomp(heart, center = T, scale. = T)
+summary(pca_heart)
+
+```
+
+
+
+
+```{r}
+## Split the data into training (80%), validation(20%)
+set.seed(7275)
+train_index = sample(nrow(heart.dummy), 0.8*dim(heart))
+valid_index = sample(setdiff(rownames(heart.dummy), train_index), 0.2*dim(heart)[1])
+valid_index = as.numeric(valid_index)
+train.df = heart.dummy[train_index,]
+valid.df = heart.dummy[valid_index,]
+
+```
+
+
+```{r}
+## fitting decision tree classification model
+
+## Run regression tree
+rt = rpart(output~ cp + trtbps + chol + fbs + restecg + thalachh + exng + oldpeak + slp + caa + thall, data = train.df, method = "class", minbucket = 1, maxdepth = 30, cp = 0.001)
+prp(rt)
+
+## find the three or four most important car specifications for predicting the heart attack output
+t(t(rt$variable.importance))
+
+
+```
+
+```{r}
+## Predicting Model on Test Data Set
+predrt = predict(rt, newdata = valid.df, type = "prob")
+##(table_pred = table(valid.df$output, predrt))
+#plot the ROC curve
+plotROC(valid.df$output, predrt)
+
+
+```
+
+
+```{r}
+## Logistic Regression
+logistic = glm(output~., data = train.df, family = "binomial")
+summary(logistic)
+exp(coef(logistic))
+## propensities
+logistic_pred = predict(logistic, valid.df, type = "response")
+#find optimal cutoff probability to use to maximize accuracy
+optimal  = optimalCutoff(valid.df$output, logistic_pred)[1]
+confusionMatrix(valid.df$output, logistic_pred)
+#calculate sensitivity
+sensitivity(valid.df$output, logistic_pred)
+#calculate specificity
+specificity(valid.df$output, logistic_pred)
+#calculate total misclassification error rate
+misClassError(valid.df$output, logistic_pred, threshold = optimal)
+#plot the ROC curve
+plotROC(valid.df$output, logistic_pred)
+```
+```{r}
+## SVM
+train.df$output = as.factor(train.df$output)
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+svm_Linear <- train(output ~., data = train.df, method = "svmLinear", trControl=trctrl, preProcess = c("center", "scale"), tuneLength = 10)
+svm_Linear ## Therefore, it just tested at value “C” =1.
+
+
+
+
+
+```
+
+
+```{r}
+## KNN
+## Normalized
+norm.values <- preProcess(train.df[, -c(12)], method=c("center", "scale"))
+train.df[, -c(12)] <- predict(norm.values, train.df[, -c(12)])
+valid.df[, -c(12)] <- predict(norm.values, valid.df[, -c(12)])
+heart.dummy[, -c(12)] = predict(norm.values, heart.dummy[, -c(12)])
+
+cl = train.df$output
+accuracy.df = data.frame(k = seq(1,14,1), accuracy = rep(0,14))
+for (i in 1:14) {
+ KNN_b = knn(train = train.df[,-12], test = valid.df[,-12], cl, k = i, prob 
+= T )
+## accuracy.df[i,2] = confusionMatrix(KNN_b, as.factor(valid.df[,12]))$
+ accuracy.df[i,2] = sum(KNN_b==valid.df[,12])/nrow(valid.df)
+}
+accuracy.df
+plot(accuracy.df,type = "l")
+
+
+
+
+```
